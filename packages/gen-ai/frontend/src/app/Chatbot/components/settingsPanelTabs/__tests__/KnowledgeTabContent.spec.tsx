@@ -104,10 +104,10 @@ describe('KnowledgeTabContent', () => {
     useChatbotConfigStore.getState().resetConfiguration();
   });
 
-  it('renders the RAG title', () => {
+  it('renders the Knowledge title', () => {
     render(<KnowledgeTabContent {...defaultProps} />);
 
-    expect(screen.getByTestId('rag-section-title')).toHaveTextContent('RAG');
+    expect(screen.getByTestId('rag-section-title')).toHaveTextContent('Knowledge');
   });
 
   it('renders RAG toggle switch', () => {

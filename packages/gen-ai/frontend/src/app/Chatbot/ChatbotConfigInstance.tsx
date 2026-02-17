@@ -19,6 +19,7 @@ import {
   selectGuardrailUserInputEnabled,
   selectGuardrailModelOutputEnabled,
   selectRagEnabled,
+  selectExternalVectorStoreId,
 } from './store';
 import { ChatbotMessages } from './ChatbotMessagesList';
 import { sampleWelcomePrompts } from './const';
@@ -58,6 +59,7 @@ export const ChatbotConfigInstance: React.FC<ChatbotConfigInstanceProps> = ({
   const selectedModel = useChatbotConfigStore(selectSelectedModel(configId));
   const selectedMcpServerIds = useChatbotConfigStore(selectSelectedMcpServerIds(configId));
   const isRagEnabled = useChatbotConfigStore(selectRagEnabled(configId));
+  const externalVectorStoreId = useChatbotConfigStore(selectExternalVectorStoreId);
 
   // Guardrails configuration from store
   const guardrail = useChatbotConfigStore(selectGuardrail(configId));
@@ -94,6 +96,7 @@ export const ChatbotConfigInstance: React.FC<ChatbotConfigInstanceProps> = ({
     isStreamingEnabled,
     temperature,
     currentVectorStoreId,
+    externalVectorStoreId,
     selectedServerIds: selectedMcpServerIds,
     mcpServers,
     mcpServerStatuses,

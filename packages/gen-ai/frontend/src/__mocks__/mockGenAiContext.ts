@@ -1,3 +1,4 @@
+/* eslint-disable camelcase */
 import React from 'react';
 import { GenAiContext } from '~/app/context/GenAiContext';
 
@@ -27,6 +28,11 @@ export const mockGenAiContextValue: React.ContextType<typeof GenAiContext> = {
       getBFFConfig: jest.fn().mockResolvedValue({ isCustomLSD: false }),
       getGuardrailsStatus: jest.fn().mockResolvedValue({ data: null }),
       getSafetyConfig: jest.fn().mockResolvedValue({ data: null }),
+      getExternalVectorDBs: jest.fn().mockResolvedValue({
+        databases: [],
+        current_default_provider: '',
+        current_vector_store_id: '',
+      }),
     },
   },
   refreshAPIState: jest.fn(),

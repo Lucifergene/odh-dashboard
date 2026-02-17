@@ -23,6 +23,7 @@ import {
   createResponse,
   getGuardrailsStatus,
   getSafetyConfig,
+  getExternalVectorDBs,
 } from '~/app/services/llamaStackService';
 
 export type GenAiAPIState = APIState<GenAiAPIs>;
@@ -54,6 +55,7 @@ const useGenAiAPIState = (
       getBFFConfig: getBFFConfig(path, queryParameters),
       getGuardrailsStatus: getGuardrailsStatus(path, queryParameters),
       getSafetyConfig: getSafetyConfig(path, queryParameters),
+      getExternalVectorDBs: getExternalVectorDBs(path, queryParameters),
     }),
     [queryParameters],
   );

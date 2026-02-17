@@ -14,6 +14,7 @@ import {
   getMCPServers,
   getMCPServerStatus,
   getMCPServerTools,
+  getExternalVectorDBs,
 } from '~/app/services/llamaStackService';
 import { URL_PREFIX } from '~/app/utilities';
 import { mockLlamaModels } from '~/__mocks__/mockLlamaStackModels';
@@ -38,6 +39,7 @@ import {
   mockMCPConnectionStatus,
   mockMCPConnectionErrorStatus,
   mockMCPTools,
+  mockExternalVectorDBsResponse,
 } from './llamaStackService.fixtures';
 
 // Mock mod-arch-core
@@ -1167,6 +1169,31 @@ describe('llamaStackService', () => {
         expect.objectContaining({ namespace: TEST_NAMESPACE }),
         {},
       );
+    });
+  });
+
+  describe('getExternalVectorDBs', () => {
+    it('should fetch external vector databases successfully', async () => {
+      mockedRestGET.mockResolvedValueOnce({ data: mockExternalVectorDBsResponse });
+
+      const result = await getExternalVectorDBs(URL_PREFIX, { namespace: TEST_NAMESPACE })();
+
+      expect(result).toEqual(mockExternalVectorDBsResponse);
+      expect(mockedRestGET).toHaveBeenCalledWith(
+        URL_PREFIX,
+        '/external-vector-dbs',
+        expect.objectContaining({ namespace: TEST_NAMESPACE }),
+        {},
+      );
+    });
+
+    it('should handle API error', async () => {
+      const mockError = new Error('ConfigMap not found');
+      mockedRestGET.mockRejectedValueOnce(mockError);
+
+      await expect(
+        getExternalVectorDBs(URL_PREFIX, { namespace: TEST_NAMESPACE })(),
+      ).rejects.toThrow();
     });
   });
 });

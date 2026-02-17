@@ -401,6 +401,7 @@ export type IconType = React.ComponentType<{ style?: React.CSSProperties }>;
 export type InstallLSDRequest = {
   models: LSDInstallModel[];
   enable_guardrails?: boolean; // If true, adds safety configuration with guardrail shields for all selected models
+  include_external_vector_dbs?: boolean; // If true, reads external-vector-dbs ConfigMap and pre-registers them in Llama Stack config
 };
 
 export type DeleteLSDRequest = {
@@ -409,6 +410,20 @@ export type DeleteLSDRequest = {
 
 export type CreateVectorStoreRequest = {
   name: string;
+};
+
+// External Vector Database types
+export type ExternalVectorDB = {
+  name: string;
+  provider_type: string;
+  vector_store_id: string;
+  config: Record<string, unknown>;
+};
+
+export type ExternalVectorDBsResponse = {
+  databases: ExternalVectorDB[];
+  current_default_provider: string;
+  current_vector_store_id: string;
 };
 
 export type GenAiAPIs = {
@@ -433,6 +448,7 @@ export type GenAiAPIs = {
   getBFFConfig: GetBFFConfig;
   getGuardrailsStatus: GetGuardrailsStatus;
   getSafetyConfig: GetSafetyConfig;
+  getExternalVectorDBs: GetExternalVectorDBs;
 };
 
 export type ModArchRestGET<T> = (
@@ -475,3 +491,4 @@ type GetMCPServerStatus = ModArchRestGET<MCPConnectionStatus>;
 type GetBFFConfig = ModArchRestGET<BFFConfig>;
 type GetGuardrailsStatus = ModArchRestGET<GuardrailsStatus>;
 type GetSafetyConfig = ModArchRestGET<SafetyConfigResponse>;
+type GetExternalVectorDBs = ModArchRestGET<ExternalVectorDBsResponse>;

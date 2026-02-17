@@ -231,6 +231,35 @@ export const mockMCPConnectionErrorStatus: MCPConnectionStatus = {
   },
 };
 
+// External Vector DB fixtures
+export const mockExternalVectorDBsResponse = {
+  databases: [
+    {
+      name: 'milvus-remote',
+      provider_type: 'remote::milvus',
+      vector_store_id: 'vs_milvus_products',
+      config: { url: 'http://milvus.example.com:19530' },
+    },
+    {
+      name: 'qdrant-prod',
+      provider_type: 'remote::qdrant',
+      vector_store_id: 'vs_qdrant_support',
+      config: { api_key: 'test-key', url: 'http://qdrant.example.com:6334' },
+    },
+  ],
+  current_default_provider: 'milvus-remote',
+  current_vector_store_id: 'vs_milvus_products',
+};
+
+export const mockSaveVectorProviderRequest = {
+  provider_id: 'milvus-remote',
+};
+
+export const mockSaveVectorProviderResponse = {
+  updated: true,
+  provider_id: 'milvus-remote',
+};
+
 export const mockMCPTools: MCPToolsStatus = {
   server_url: 'http://test-server.example.com',
   status: 'success',

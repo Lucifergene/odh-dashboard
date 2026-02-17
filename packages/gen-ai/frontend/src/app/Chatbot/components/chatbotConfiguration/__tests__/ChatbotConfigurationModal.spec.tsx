@@ -27,6 +27,11 @@ beforeEach(() => {
     apiAvailable: true,
     api: {
       installLSD: mockInstallLSD,
+      getExternalVectorDBs: jest.fn().mockResolvedValue({
+        databases: [],
+        current_default_provider: '',
+        current_vector_store_id: '',
+      }),
     },
   });
 
@@ -306,6 +311,7 @@ describe('ChatbotConfigurationModal guardrails configuration', () => {
           },
         ],
         enable_guardrails: false,
+        include_external_vector_dbs: false,
       });
     });
   });
@@ -328,6 +334,7 @@ describe('ChatbotConfigurationModal guardrails configuration', () => {
           },
         ],
         enable_guardrails: true,
+        include_external_vector_dbs: false,
       });
     });
   });

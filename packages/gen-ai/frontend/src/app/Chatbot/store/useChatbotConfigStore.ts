@@ -120,7 +120,12 @@ const removeMcpToolSelectionsForConfig = (configId: string): void => {
   }
 };
 
-const initialState = {
+type ChatbotConfigState = Pick<
+  ChatbotConfigStore,
+  'configurations' | 'configIds' | 'externalVectorStoreId'
+>;
+
+const initialState: ChatbotConfigState = {
   configurations: {
     default: {
       ...DEFAULT_CONFIGURATION,
@@ -128,6 +133,7 @@ const initialState = {
     },
   },
   configIds: ['default'],
+  externalVectorStoreId: null,
 };
 export const useChatbotConfigStore = create<ChatbotConfigStore>()(
   devtools(
@@ -299,6 +305,16 @@ export const useChatbotConfigStore = create<ChatbotConfigStore>()(
           },
           false,
           'updateRagEnabled',
+        );
+      },
+
+      updateExternalVectorStoreId: (value: string | null) => {
+        set(
+          {
+            externalVectorStoreId: value,
+          },
+          false,
+          'updateExternalVectorStoreId',
         );
       },
 

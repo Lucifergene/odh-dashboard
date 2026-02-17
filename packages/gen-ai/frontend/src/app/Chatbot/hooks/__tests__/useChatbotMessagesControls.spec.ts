@@ -86,6 +86,7 @@ const createDefaultHookProps = (overrides?: {
   isStreamingEnabled?: boolean;
   temperature?: number;
   currentVectorStoreId?: string | null;
+  externalVectorStoreId?: string | null;
   selectedServerIds?: string[];
 }) => ({
   ...defaultMcpProps,
@@ -96,6 +97,7 @@ const createDefaultHookProps = (overrides?: {
   isStreamingEnabled: false,
   temperature: 0.7,
   currentVectorStoreId: null,
+  externalVectorStoreId: null,
   selectedServerIds: [],
   ...overrides,
 });

@@ -1,6 +1,13 @@
 /* eslint-disable camelcase */
 import React from 'react';
-import { Modal, ModalBody, ModalFooter, ModalHeader, ModalVariant } from '@patternfly/react-core';
+import {
+  Checkbox,
+  Modal,
+  ModalBody,
+  ModalFooter,
+  ModalHeader,
+  ModalVariant,
+} from '@patternfly/react-core';
 import { Link } from 'react-router-dom';
 import { DashboardModalFooter } from 'mod-arch-shared';
 import { fireFormTrackingEvent } from '@odh-dashboard/internal/concepts/analyticsTracking/segmentIOUtils';
@@ -11,6 +18,7 @@ import type { MaaSModel } from '~/odh/extension-points/maas';
 import { convertMaaSModelToAIModel } from '~/app/utilities/utils';
 import { useGenAiAPI } from '~/app/hooks/useGenAiAPI';
 import useGuardrailsEnabled from '~/app/Chatbot/hooks/useGuardrailsEnabled';
+import useFetchExternalVectorDBs from '~/app/hooks/useFetchExternalVectorDBs';
 import ChatbotConfigurationTable from './ChatbotConfigurationTable';
 import ChatbotConfigurationState from './ChatbotConfigurationState';
 
@@ -45,6 +53,7 @@ const ChatbotConfigurationModal: React.FC<ChatbotConfigurationModalProps> = ({
   const { namespace } = React.useContext(GenAiContext);
   const { api, apiAvailable } = useGenAiAPI();
   const guardrailsEnabled = useGuardrailsEnabled();
+  const { data: externalDBs, loaded: externalDBsLoaded } = useFetchExternalVectorDBs();
 
   // Convert pure MaaS models to AIModel format so they can be used in the table
   const maasAsAIModels: AIModel[] = React.useMemo(() => {
@@ -91,6 +100,7 @@ const ChatbotConfigurationModal: React.FC<ChatbotConfigurationModalProps> = ({
     new Map(),
   );
 
+  const [includeExternalVectorDBs, setIncludeExternalVectorDBs] = React.useState(false);
   const [configuringPlayground, setConfiguringPlayground] = React.useState(false);
   const [error, setError] = React.useState<Error>();
   const [alertTitle, setAlertTitle] = React.useState<string>();
@@ -156,6 +166,7 @@ const ChatbotConfigurationModal: React.FC<ChatbotConfigurationModalProps> = ({
             };
           }),
           enable_guardrails: guardrailsEnabled,
+          include_external_vector_dbs: includeExternalVectorDBs,
         })
         .then(() => {
           fireFormTrackingEvent(
@@ -240,13 +251,26 @@ const ChatbotConfigurationModal: React.FC<ChatbotConfigurationModalProps> = ({
             onClose={onSuccessClose}
           />
         ) : (
-          <ChatbotConfigurationTable
-            allModels={allModels}
-            selectedModels={selectedModels}
-            setSelectedModels={setSelectedModels}
-            maxTokensMap={maxTokensMap}
-            onMaxTokensChange={handleMaxTokensChange}
-          />
+          <>
+            <ChatbotConfigurationTable
+              allModels={allModels}
+              selectedModels={selectedModels}
+              setSelectedModels={setSelectedModels}
+              maxTokensMap={maxTokensMap}
+              onMaxTokensChange={handleMaxTokensChange}
+            />
+            {externalDBsLoaded && externalDBs.length > 0 && (
+              <Checkbox
+                id="include-external-vector-dbs"
+                label="Include external vector databases"
+                description={`${externalDBs.length} external vector database${externalDBs.length > 1 ? 's' : ''} available`}
+                isChecked={includeExternalVectorDBs}
+                onChange={(_, checked) => setIncludeExternalVectorDBs(checked)}
+                className="pf-v6-u-mt-md"
+                data-testid="include-external-vector-dbs-checkbox"
+              />
+            )}
+          </>
         )}
       </ModalBody>
       {!configuringPlayground && (

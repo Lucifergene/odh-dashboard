@@ -56,5 +56,9 @@ export const selectRagEnabled =
   (state: ChatbotConfigStore): boolean =>
     state.configurations[configId]?.isRagEnabled ?? DEFAULT_CONFIGURATION.isRagEnabled;
 
+// External vector store selector (top-level, not per-configId)
+export const selectExternalVectorStoreId = (state: ChatbotConfigStore): string | null =>
+  state.externalVectorStoreId;
+
 // Configuration management selectors
 export const selectConfigIds = (state: ChatbotConfigStore): string[] => state.configIds;

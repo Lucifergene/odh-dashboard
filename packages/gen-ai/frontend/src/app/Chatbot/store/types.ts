@@ -52,6 +52,8 @@ export const DEFAULT_CONFIGURATION: ChatbotConfiguration = {
 export interface ChatbotConfigStoreState {
   configurations: { [id: string]: ChatbotConfiguration | undefined };
   configIds: string[];
+  /** External vector store ID from the connected external provider (namespace-level, shared across panes) */
+  externalVectorStoreId: string | null;
 }
 
 /**
@@ -88,6 +90,9 @@ export interface ChatbotConfigStoreActions {
 
   // RAG toggle (per-pane)
   updateRagEnabled: (id: string, value: boolean) => void;
+
+  // External vector store (namespace-level, shared across panes)
+  updateExternalVectorStoreId: (value: string | null) => void;
 
   // Configuration management
   resetConfiguration: (initialValues?: Partial<ChatbotConfiguration>) => void;

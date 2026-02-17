@@ -52,6 +52,7 @@ interface UseChatbotMessagesProps {
   isStreamingEnabled: boolean;
   temperature: number;
   currentVectorStoreId: string | null;
+  externalVectorStoreId: string | null;
   selectedServerIds: string[];
   // MCP data as props (instead of contexts)
   mcpServers: MCPServerFromAPI[];
@@ -73,6 +74,7 @@ const useChatbotMessages = ({
   isStreamingEnabled,
   temperature,
   currentVectorStoreId,
+  externalVectorStoreId,
   selectedServerIds,
   mcpServers,
   mcpServerStatuses,
@@ -260,7 +262,9 @@ const useChatbotMessages = ({
       const selectedMcpServers = getSelectedServersForAPICallback();
 
       // Determine vector store ID to use for RAG
-      const vectorStoreIdToUse = selectedSourceSettings?.vectorStore || currentVectorStoreId;
+      // Priority: external vector store > upload-selected vector store > inline default
+      const vectorStoreIdToUse =
+        externalVectorStoreId || selectedSourceSettings?.vectorStore || currentVectorStoreId;
 
       // Get guardrail shield IDs based on user configuration
       const guardrailShieldIds = getGuardrailShieldIds();

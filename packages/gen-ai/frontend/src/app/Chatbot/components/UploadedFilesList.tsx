@@ -12,6 +12,7 @@ import {
   EmptyState,
   EmptyStateBody,
   Tooltip,
+  Label,
 } from '@patternfly/react-core';
 import { FileIcon, TimesIcon } from '@patternfly/react-icons';
 import { fireFormTrackingEvent } from '@odh-dashboard/internal/concepts/analyticsTracking/segmentIOUtils';
@@ -26,6 +27,8 @@ interface UploadedFilesListProps {
   isDeleting: boolean;
   error: string | null;
   onDeleteFile: (fileId: string) => void;
+  providerLabel?: string;
+  isInlineProvider?: boolean;
 }
 
 const formatFileSize = (bytes: number): string => {
@@ -52,6 +55,8 @@ const UploadedFilesList: React.FC<UploadedFilesListProps> = ({
   isDeleting,
   error,
   onDeleteFile,
+  providerLabel,
+  isInlineProvider = true,
 }) => {
   const [fileToDelete, setFileToDelete] = React.useState<FileModel | null>(null);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = React.useState(false);
@@ -135,12 +140,23 @@ const UploadedFilesList: React.FC<UploadedFilesListProps> = ({
               </GridItem>
               <GridItem span={7}>
                 <div className="pf-u-min-width-0">
-                  <div
-                    className="pf-u-font-weight-bold pf-u-word-break-word pf-u-font-size-md"
-                    title={file.filename}
-                  >
-                    {file.filename}
-                  </div>
+                  <Flex alignItems={{ default: 'alignItemsCenter' }} gap={{ default: 'gapXs' }}>
+                    <FlexItem>
+                      <div
+                        className="pf-u-font-weight-bold pf-u-word-break-word pf-u-font-size-md"
+                        title={file.filename}
+                      >
+                        {file.filename}
+                      </div>
+                    </FlexItem>
+                    {providerLabel && (
+                      <FlexItem>
+                        <Label isCompact color={isInlineProvider ? 'green' : 'orange'}>
+                          {providerLabel}
+                        </Label>
+                      </FlexItem>
+                    )}
+                  </Flex>
                   <div
                     className="pf-u-font-size-sm"
                     style={{ color: 'var(--pf-t--global--border--color--on-secondary)' }}
