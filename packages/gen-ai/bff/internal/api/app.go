@@ -354,6 +354,8 @@ func (app *App) Routes() http.Handler {
 
 	// MLflow API routes
 	apiRouter.GET(constants.MLflowPromptsPath, app.AttachNamespace(app.RequireAccessToService(app.AttachMLflowClient(app.MLflowListPromptsHandler))))
+	// External Vector Database endpoints
+	apiRouter.GET(constants.ExternalVectorDBsPath, app.AttachNamespace(app.RequireAccessToService(app.ExternalVectorDBsListHandler)))
 
 	// Guardrails API route
 	apiRouter.GET(constants.GuardrailsStatusPath, app.AttachNamespace(app.RequireGuardrailAccess(app.GuardrailsStatusHandler)))

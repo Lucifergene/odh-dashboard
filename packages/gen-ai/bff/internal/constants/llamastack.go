@@ -14,6 +14,11 @@ const (
 	DefaultVectorStoreProvider = "milvus"
 )
 
+// External Vector Database ConfigMap
+const (
+	ExternalVectorDBsConfigMapName = "gen-ai-external-vector-dbs"
+)
+
 type EmbeddingModelConfig struct {
 	ModelID            string `json:"model_id"`
 	ProviderID         string `json:"provider_id"`

@@ -1287,6 +1287,89 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  # =============================================================================
+  # EXTERNAL VECTOR DATABASE ENDPOINTS
+  # =============================================================================
+
+  /gen-ai/api/v1/external-vector-dbs:
+    summary: List external vector databases
+    description: >-
+      Lists external vector database providers from the gen-ai-external-vector-dbs ConfigMap
+      in the specified namespace. Also returns the current default_provider_id from the
+      LlamaStack config.
+    get:
+      tags:
+        - ExternalVectorDB
+      security:
+        - Bearer: []
+      parameters:
+        - $ref: '#/components/parameters/NamespaceParam'
+      responses:
+        '200':
+          description: List of external vector databases with current default provider
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ExternalVectorDBsListData'
+              example:
+                data:
+                  databases:
+                    - name: 'milvus-remote'
+                      provider_type: 'remote::milvus'
+                      vector_store_id: 'vs_products_catalog'
+                      config:
+                        url: 'http://milvus.example.com:19530'
+                  current_default_provider: 'milvus-remote'
+                  current_vector_store_id: 'vs_products_catalog'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Access denied to ConfigMap
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                config_map_access_denied:
+                  summary: ConfigMap Access Denied
+                  value:
+                    error:
+                      code: '403'
+                      message: "Access denied to ConfigMap 'gen-ai-external-vector-dbs' in namespace 'avik-test'"
+                      details:
+                        config_map_name: 'gen-ai-external-vector-dbs'
+                        namespace: 'avik-test'
+                        reason: 'Insufficient permissions'
+        '404':
+          description: External vector databases ConfigMap not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                config_map_not_found:
+                  summary: ConfigMap Not Found
+                  value:
+                    error:
+                      code: '404'
+                      message: "ConfigMap 'gen-ai-external-vector-dbs' not found in namespace 'avik-test'"
+                      details:
+                        config_map_name: 'gen-ai-external-vector-dbs'
+                        namespace: 'avik-test'
+                        reason: 'ConfigMap does not exist'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+      operationId: listExternalVectorDBs
+      summary: List external vector databases
+      description: >-
+        Reads the gen-ai-external-vector-dbs ConfigMap in the user's project namespace
+        and returns a list of external vector database providers.
+
 components:
   securitySchemes:
     Bearer:
@@ -1304,6 +1387,62 @@ components:
         type: string
         example: 'demo'
   schemas:
+    # External Vector Database schemas
+    ExternalVectorDBConfig:
+      type: object
+      required:
+        - name
+        - provider_type
+        - config
+      properties:
+        name:
+          type: string
+          description: Provider ID / name of the external vector database
+          example: 'milvus-remote'
+        provider_type:
+          type: string
+          description: LlamaStack provider type identifier
+          example: 'remote::milvus'
+        vector_store_id:
+          type: string
+          description: The vector store ID on the external provider to use for RAG queries
+          example: 'vs_products_catalog'
+        config:
+          type: object
+          additionalProperties: true
+          description: Provider-specific configuration
+          example:
+            url: 'http://milvus.example.com:19530'
+        embedding_model:
+          type: string
+          description: Embedding model ID used for this vector store. Defaults to system default if not specified.
+          example: 'ibm-granite/granite-embedding-125m-english'
+        embedding_dimension:
+          type: integer
+          description: Embedding dimension for the vector store. Defaults to system default if not specified.
+          example: 768
+
+    ExternalVectorDBsListData:
+      type: object
+      required:
+        - databases
+        - current_default_provider
+        - current_vector_store_id
+      properties:
+        databases:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExternalVectorDBConfig'
+          description: List of external vector database providers
+        current_default_provider:
+          type: string
+          description: Current default_provider_id from LlamaStack config
+          example: 'milvus-remote'
+        current_vector_store_id:
+          type: string
+          description: The vector_store_id of the current default provider
+          example: 'vs_products_catalog'
+
     HealthCheckModel:
       type: object
       required:

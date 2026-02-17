@@ -162,8 +162,8 @@ func TestGenerateLlamaStackConfigWithMaaSModels(t *testing.T) {
 
 		ctx := context.Background()
 
-		// Test the MaaS model handling logic (with empty guardrails)
-		result, err := client.generateLlamaStackConfig(ctx, "test-namespace", models, false, mockMaaSClient)
+		// Test the MaaS model handling logic (with empty guardrails, no external vector DBs)
+		result, err := client.generateLlamaStackConfig(ctx, nil, "test-namespace", models, false, false, mockMaaSClient)
 
 		// This should succeed since we're only using MaaS models
 		assert.NoError(t, err)
@@ -203,8 +203,8 @@ func TestGenerateLlamaStackConfigWithMaaSModels(t *testing.T) {
 
 		ctx := context.Background()
 
-		// Test the MaaS model handling logic (with empty guardrails)
-		result, err := client.generateLlamaStackConfig(ctx, "test-namespace", models, false, mockMaaSClient)
+		// Test the MaaS model handling logic (with empty guardrails, no external vector DBs)
+		result, err := client.generateLlamaStackConfig(ctx, nil, "test-namespace", models, false, false, mockMaaSClient)
 
 		// This should fail because the model is not ready
 		assert.Error(t, err)
@@ -228,13 +228,44 @@ func TestGenerateLlamaStackConfigWithMaaSModels(t *testing.T) {
 
 		ctx := context.Background()
 
-		// Test the MaaS model handling logic (with empty guardrails)
-		result, err := client.generateLlamaStackConfig(ctx, "test-namespace", models, false, mockMaaSClient)
+		// Test the MaaS model handling logic (with empty guardrails, no external vector DBs)
+		result, err := client.generateLlamaStackConfig(ctx, nil, "test-namespace", models, false, false, mockMaaSClient)
 
 		// This should fail because the model is not found
 		assert.Error(t, err)
 		assert.Empty(t, result)
 		assert.Contains(t, err.Error(), "not found")
+	})
+
+	t.Run("should generate config without external vector DBs when flag is false", func(t *testing.T) {
+		// Create a mock MaaS client
+		mockMaaSClient := &maasmocks.MockMaaSClient{}
+
+		// Create a token client
+		client := &TokenKubernetesClient{
+			Logger: slog.Default(),
+		}
+
+		testModels := []models.InstallModel{
+			{ModelName: "llama-2-7b-chat", IsMaaSModel: true},
+		}
+
+		ctx := context.Background()
+
+		// includeExternalVectorDBs=false, so no attempt to read ConfigMap
+		result, err := client.generateLlamaStackConfig(ctx, nil, "test-namespace", testModels, false, false, mockMaaSClient)
+
+		assert.NoError(t, err)
+		assert.NotEmpty(t, result)
+
+		// Verify the config is valid and has only the default inline milvus provider
+		var cfg LlamaStackConfig
+		err = cfg.FromYAML(result)
+		assert.NoError(t, err)
+		assert.Len(t, cfg.Providers.VectorIO, 1)
+		assert.Equal(t, "milvus", cfg.Providers.VectorIO[0].ProviderID)
+		assert.Equal(t, "inline::milvus", cfg.Providers.VectorIO[0].ProviderType)
+		assert.Len(t, cfg.RegisteredResources.VectorStores, 0)
 	})
 }
 

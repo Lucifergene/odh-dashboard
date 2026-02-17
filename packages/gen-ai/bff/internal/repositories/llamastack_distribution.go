@@ -66,11 +66,13 @@ func (r *LlamaStackDistributionRepository) InstallLlamaStackDistribution(
 	namespace string,
 	installmodels []models.InstallModel,
 	enableGuardrails bool,
+	includeExternalVectorDBs bool,
 	maasClient maas.MaaSClientInterface,
 ) (*models.LlamaStackDistributionInstallModel, error) {
 	// Call the Kubernetes client to install the LSD
 	// enableGuardrails - if true, safety providers with shields will be configured for all models
-	lsd, err := client.InstallLlamaStackDistribution(ctx, identity, namespace, installmodels, enableGuardrails, maasClient)
+	// includeExternalVectorDBs - if true, external vector databases from ConfigMap will be pre-registered
+	lsd, err := client.InstallLlamaStackDistribution(ctx, identity, namespace, installmodels, enableGuardrails, includeExternalVectorDBs, maasClient)
 	if err != nil {
 		return nil, err
 	}

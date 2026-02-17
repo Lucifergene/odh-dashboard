@@ -29,12 +29,13 @@ type KubernetesClientInterface interface {
 	// LlamaStack Distribution
 	GetLlamaStackDistributions(ctx context.Context, identity *integrations.RequestIdentity, namespace string) (*lsdapi.LlamaStackDistributionList, error)
 	CanListLlamaStackDistributions(ctx context.Context, identity *integrations.RequestIdentity, namespace string) (bool, error)
-	InstallLlamaStackDistribution(ctx context.Context, identity *integrations.RequestIdentity, namespace string, models []models.InstallModel, enableGuardrails bool, maasClient maas.MaaSClientInterface) (*lsdapi.LlamaStackDistribution, error)
+	InstallLlamaStackDistribution(ctx context.Context, identity *integrations.RequestIdentity, namespace string, models []models.InstallModel, enableGuardrails bool, includeExternalVectorDBs bool, maasClient maas.MaaSClientInterface) (*lsdapi.LlamaStackDistribution, error)
 	DeleteLlamaStackDistribution(ctx context.Context, identity *integrations.RequestIdentity, namespace string, name string) (*lsdapi.LlamaStackDistribution, error)
 	GetModelProviderInfo(ctx context.Context, identity *integrations.RequestIdentity, namespace string, modelID string) (*types.ModelProviderInfo, error)
 
 	// ConfigMap operations
 	GetConfigMap(ctx context.Context, identity *integrations.RequestIdentity, namespace string, name string) (*corev1.ConfigMap, error)
+	UpdateConfigMap(ctx context.Context, identity *integrations.RequestIdentity, namespace string, configMap *corev1.ConfigMap) error
 
 	// Guardrails operations
 	CanListGuardrailsOrchestrator(ctx context.Context, identity *integrations.RequestIdentity, namespace string) (bool, error)

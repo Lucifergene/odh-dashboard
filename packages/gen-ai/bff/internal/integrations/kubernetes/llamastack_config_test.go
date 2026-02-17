@@ -855,3 +855,250 @@ func TestAddVLLMProviderAndModel_WithMaxTokens(t *testing.T) {
 		assert.True(t, model2Found, "Model 2 should be found")
 	})
 }
+
+func TestVectorStoresYAMLKeyRename(t *testing.T) {
+	t.Run("registered_resources serializes with vector_stores key", func(t *testing.T) {
+		config := NewDefaultLlamaStackConfig()
+
+		// Add an external vector DB registration
+		config.RegisterVectorDB(NewExternalVectorDB(
+			"vs_abc123", "my-milvus", "ibm-granite/granite-embedding-125m-english", 768,
+		))
+
+		yamlStr, err := config.ToYAML()
+		require.NoError(t, err)
+
+		// Must contain vector_stores, NOT vector_dbs
+		assert.Contains(t, yamlStr, "vector_stores:")
+		assert.NotContains(t, yamlStr, "vector_dbs:")
+		assert.Contains(t, yamlStr, "vector_store_id: vs_abc123")
+		assert.Contains(t, yamlStr, "provider_id: my-milvus")
+		assert.Contains(t, yamlStr, "embedding_model: ibm-granite/granite-embedding-125m-english")
+		assert.Contains(t, yamlStr, "embedding_dimension: 768")
+	})
+
+	t.Run("NewExternalVectorDB creates correct struct", func(t *testing.T) {
+		vdb := NewExternalVectorDB("vs_123", "remote-qdrant", "model-x", 512)
+		assert.Equal(t, "vs_123", vdb.VectorStoreID)
+		assert.Equal(t, "remote-qdrant", vdb.ProviderID)
+		assert.Equal(t, "model-x", vdb.EmbeddingModel)
+		assert.Equal(t, 512, vdb.EmbeddingDimension)
+		assert.Empty(t, vdb.DBID)
+		assert.Empty(t, vdb.Name)
+	})
+
+	t.Run("RegisterVectorDB appends to list", func(t *testing.T) {
+		config := NewDefaultLlamaStackConfig()
+		assert.Len(t, config.RegisteredResources.VectorStores, 0)
+
+		config.RegisterVectorDB(NewExternalVectorDB("vs_1", "p1", "m1", 768))
+		assert.Len(t, config.RegisteredResources.VectorStores, 1)
+
+		config.RegisterVectorDB(NewExternalVectorDB("vs_2", "p2", "m2", 512))
+		assert.Len(t, config.RegisteredResources.VectorStores, 2)
+	})
+}
+
+func TestLegacyVectorDBsMigration(t *testing.T) {
+	t.Run("legacy vector_dbs key is migrated to VectorDBs field", func(t *testing.T) {
+		// YAML using the old "vector_dbs" key under registered_resources
+		legacyYAML := `
+version: "2"
+image_name: rh
+apis:
+  - inference
+  - vector_io
+providers:
+  inference: []
+  vector_io: []
+  agents: []
+  eval: []
+  files: []
+  datasetio: []
+  scoring: []
+  tool_runtime: []
+  safety: []
+metadata_store:
+  type: sqlite
+  db_path: /tmp/test.db
+storage:
+  backends: {}
+  stores: {}
+vector_stores:
+  default_provider_id: milvus
+  default_embedding_model:
+    provider_id: sentence-transformers
+    model_id: ibm-granite/granite-embedding-125m-english
+registered_resources:
+  models: []
+  shields: []
+  vector_dbs:
+    - db_id: legacy-db-1
+      name: my-legacy-db
+      provider_id: milvus
+  datasets: []
+  scoring_fns: []
+  benchmarks: []
+  tool_groups: []
+server:
+  port: 8321
+`
+
+		var config LlamaStackConfig
+		err := config.FromYAML(legacyYAML)
+		require.NoError(t, err)
+
+		// The legacy vector_dbs should be migrated into VectorDBs
+		require.Len(t, config.RegisteredResources.VectorStores, 1)
+		assert.Equal(t, "legacy-db-1", config.RegisteredResources.VectorStores[0].DBID)
+		assert.Equal(t, "my-legacy-db", config.RegisteredResources.VectorStores[0].Name)
+		assert.Equal(t, "milvus", config.RegisteredResources.VectorStores[0].ProviderID)
+	})
+
+	t.Run("new vector_stores key is parsed normally", func(t *testing.T) {
+		newYAML := `
+version: "2"
+image_name: rh
+apis:
+  - inference
+  - vector_io
+providers:
+  inference: []
+  vector_io: []
+  agents: []
+  eval: []
+  files: []
+  datasetio: []
+  scoring: []
+  tool_runtime: []
+  safety: []
+metadata_store:
+  type: sqlite
+  db_path: /tmp/test.db
+storage:
+  backends: {}
+  stores: {}
+vector_stores:
+  default_provider_id: milvus
+  default_embedding_model:
+    provider_id: sentence-transformers
+    model_id: ibm-granite/granite-embedding-125m-english
+registered_resources:
+  models: []
+  shields: []
+  vector_stores:
+    - vector_store_id: vs_new_123
+      provider_id: remote-milvus
+      embedding_model: model-x
+      embedding_dimension: 768
+  datasets: []
+  scoring_fns: []
+  benchmarks: []
+  tool_groups: []
+server:
+  port: 8321
+`
+
+		var config LlamaStackConfig
+		err := config.FromYAML(newYAML)
+		require.NoError(t, err)
+
+		require.Len(t, config.RegisteredResources.VectorStores, 1)
+		assert.Equal(t, "vs_new_123", config.RegisteredResources.VectorStores[0].VectorStoreID)
+		assert.Equal(t, "remote-milvus", config.RegisteredResources.VectorStores[0].ProviderID)
+		assert.Equal(t, "model-x", config.RegisteredResources.VectorStores[0].EmbeddingModel)
+		assert.Equal(t, 768, config.RegisteredResources.VectorStores[0].EmbeddingDimension)
+	})
+
+	t.Run("empty config does not panic on migration", func(t *testing.T) {
+		minimalYAML := `
+version: "2"
+image_name: rh
+apis: []
+providers:
+  inference: []
+  vector_io: []
+  agents: []
+  eval: []
+  files: []
+  datasetio: []
+  scoring: []
+  tool_runtime: []
+  safety: []
+metadata_store:
+  type: sqlite
+  db_path: /tmp/test.db
+storage:
+  backends: {}
+  stores: {}
+vector_stores:
+  default_provider_id: milvus
+  default_embedding_model:
+    provider_id: sentence-transformers
+    model_id: ibm-granite/granite-embedding-125m-english
+registered_resources:
+  models: []
+  shields: []
+  vector_stores: []
+  datasets: []
+  scoring_fns: []
+  benchmarks: []
+  tool_groups: []
+server:
+  port: 8321
+`
+
+		var config LlamaStackConfig
+		err := config.FromYAML(minimalYAML)
+		require.NoError(t, err)
+		assert.Len(t, config.RegisteredResources.VectorStores, 0)
+	})
+}
+
+func TestExternalVectorDBProviderRegistration(t *testing.T) {
+	t.Run("external providers are added to providers.vector_io", func(t *testing.T) {
+		config := NewDefaultLlamaStackConfig()
+
+		// Default should have 1 inline milvus provider
+		initialCount := len(config.Providers.VectorIO)
+		assert.Equal(t, 1, initialCount)
+
+		// Add an external provider
+		config.AddVectorIOProvider(NewProvider("remote-milvus", "remote::milvus", map[string]interface{}{
+			"url": "http://milvus.example.com:19530",
+		}))
+
+		assert.Len(t, config.Providers.VectorIO, 2)
+		assert.Equal(t, "remote-milvus", config.Providers.VectorIO[1].ProviderID)
+		assert.Equal(t, "remote::milvus", config.Providers.VectorIO[1].ProviderType)
+	})
+
+	t.Run("full config roundtrip with external vector stores", func(t *testing.T) {
+		config := NewDefaultLlamaStackConfig()
+
+		// Add external provider and registration
+		config.AddVectorIOProvider(NewProvider("ext-qdrant", "remote::qdrant", map[string]interface{}{
+			"url": "http://qdrant.example.com:6333",
+		}))
+		config.RegisterVectorDB(NewExternalVectorDB(
+			"vs_ext_001", "ext-qdrant", "ibm-granite/granite-embedding-125m-english", 768,
+		))
+
+		// Serialize and parse back
+		yamlStr, err := config.ToYAML()
+		require.NoError(t, err)
+
+		var parsed LlamaStackConfig
+		err = parsed.FromYAML(yamlStr)
+		require.NoError(t, err)
+
+		// Verify providers
+		assert.Len(t, parsed.Providers.VectorIO, 2)
+		assert.Equal(t, "ext-qdrant", parsed.Providers.VectorIO[1].ProviderID)
+
+		// Verify registered resources
+		require.Len(t, parsed.RegisteredResources.VectorStores, 1)
+		assert.Equal(t, "vs_ext_001", parsed.RegisteredResources.VectorStores[0].VectorStoreID)
+		assert.Equal(t, "ext-qdrant", parsed.RegisteredResources.VectorStores[0].ProviderID)
+	})
+}

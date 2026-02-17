@@ -517,6 +517,21 @@ func (kc *TokenKubernetesClient) GetConfigMap(ctx context.Context, identity *int
 	return configMap, nil
 }
 
+// UpdateConfigMap updates an existing ConfigMap in the cluster.
+// The caller must pass the full ConfigMap object (typically fetched via GetConfigMap first)
+// so that metadata such as OwnerReferences, labels, annotations, and resourceVersion are preserved.
+func (kc *TokenKubernetesClient) UpdateConfigMap(ctx context.Context, identity *integrations.RequestIdentity, namespace string, configMap *corev1.ConfigMap) error {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	if err := kc.Client.Update(ctx, configMap); err != nil {
+		kc.Logger.Error("failed to update ConfigMap", "error", err, "namespace", namespace, "name", configMap.Name)
+		return fmt.Errorf("failed to update ConfigMap: %w", err)
+	}
+
+	return nil
+}
+
 // GetGuardrailsOrchestratorStatus lists GuardrailsOrchestrators in the namespace and returns the first one found.
 func (kc *TokenKubernetesClient) GetGuardrailsOrchestratorStatus(ctx context.Context, identity *integrations.RequestIdentity, namespace string) (*models.GuardrailsStatus, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -1000,7 +1015,7 @@ func (kc *TokenKubernetesClient) findGuardrailsServiceAccountTokenSecret(ctx con
 	return secretName, nil
 }
 
-func (kc *TokenKubernetesClient) InstallLlamaStackDistribution(ctx context.Context, identity *integrations.RequestIdentity, namespace string, models []models.InstallModel, guardrailsFeatureEnabled bool, maasClient maas.MaaSClientInterface) (*lsdapi.LlamaStackDistribution, error) {
+func (kc *TokenKubernetesClient) InstallLlamaStackDistribution(ctx context.Context, identity *integrations.RequestIdentity, namespace string, models []models.InstallModel, guardrailsFeatureEnabled bool, includeExternalVectorDBs bool, maasClient maas.MaaSClientInterface) (*lsdapi.LlamaStackDistribution, error) {
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
@@ -1151,7 +1166,7 @@ func (kc *TokenKubernetesClient) InstallLlamaStackDistribution(ctx context.Conte
 
 	// Step 2: Generate ConfigMap content first (before creating LSD)
 	configMapName := "llama-stack-config"
-	runYAML, err := kc.generateLlamaStackConfig(ctx, namespace, models, guardrailsReady, maasClient)
+	runYAML, err := kc.generateLlamaStackConfig(ctx, identity, namespace, models, guardrailsReady, includeExternalVectorDBs, maasClient)
 	if err != nil {
 		kc.Logger.Error("failed to generate Llama Stack configuration", "error", err, "namespace", namespace)
 		return nil, fmt.Errorf("failed to generate Llama Stack configuration: %w", err)
@@ -1279,6 +1294,25 @@ func (kc *TokenKubernetesClient) InstallLlamaStackDistribution(ctx context.Conte
 	return lsd, nil
 }
 
+// readExternalVectorDBs reads and parses the gen-ai-external-vector-dbs ConfigMap.
+// Returns an empty slice (not error) if the ConfigMap doesn't exist.
+func (kc *TokenKubernetesClient) readExternalVectorDBs(ctx context.Context, identity *integrations.RequestIdentity, namespace string) ([]models.ExternalVectorDBConfig, error) {
+	configMap, err := kc.GetConfigMap(ctx, identity, namespace, constants.ExternalVectorDBsConfigMapName)
+	if err != nil {
+		return nil, err
+	}
+
+	defaultEmbedding := constants.DefaultEmbeddingModel()
+	databases := models.ParseExternalVectorDBsFromConfigMapData(
+		configMap.Data,
+		defaultEmbedding.ModelID,
+		int(defaultEmbedding.EmbeddingDimension),
+		kc.Logger,
+	)
+
+	return databases, nil
+}
+
 // ensureVLLMCompatibleURL ensures the URL has /v1 suffix for vLLM provider compatibility
 func ensureVLLMCompatibleURL(url string) string {
 	// Remove any trailing slashes
@@ -1291,8 +1325,11 @@ func ensureVLLMCompatibleURL(url string) string {
 	return url + "/v1"
 }
 
-// generateLlamaStackConfig generates the Llama Stack configuration YAML
-func (kc *TokenKubernetesClient) generateLlamaStackConfig(ctx context.Context, namespace string, installModels []models.InstallModel, enableGuardrails bool, maasClient maas.MaaSClientInterface) (string, error) {
+// generateLlamaStackConfig generates the Llama Stack configuration YAML.
+// When includeExternalVectorDBs is true, it reads the gen-ai-external-vector-dbs ConfigMap
+// and populates both providers.vector_io and registered_resources.vector_stores with the
+// external vector database entries.
+func (kc *TokenKubernetesClient) generateLlamaStackConfig(ctx context.Context, identity *integrations.RequestIdentity, namespace string, installModels []models.InstallModel, enableGuardrails bool, includeExternalVectorDBs bool, maasClient maas.MaaSClientInterface) (string, error) {
 	// Create a new config to build
 	config := NewDefaultLlamaStackConfig()
 
@@ -1375,6 +1412,29 @@ func (kc *TokenKubernetesClient) generateLlamaStackConfig(ctx context.Context, n
 			config.AddVLLMProviderAndModel(providerID, endpointURL, i, modelID, modelType, metadata, model.MaxTokens)
 			kc.Logger.Info("Added regular LLM model to configuration", "model", modelID, "endpoint", endpointURL, "maxTokens", model.MaxTokens)
 
+		}
+	}
+
+	// Populate external vector databases if the flag is set
+	if includeExternalVectorDBs {
+		externalDBs, err := kc.readExternalVectorDBs(ctx, identity, namespace)
+		if err != nil {
+			// Soft fail: log warning but don't block playground creation
+			kc.Logger.Warn("failed to read external vector DBs ConfigMap, skipping external DB registration", "error", err, "namespace", namespace)
+		} else if len(externalDBs) > 0 {
+			for _, extDB := range externalDBs {
+				// Add external provider to providers.vector_io
+				config.AddVectorIOProvider(NewProvider(extDB.Name, extDB.ProviderType, extDB.Config))
+
+				// Add external store to registered_resources.vector_stores
+				config.RegisterVectorDB(NewExternalVectorDB(
+					extDB.VectorStoreID,
+					extDB.Name,
+					extDB.EmbeddingModel,
+					extDB.EmbeddingDimension,
+				))
+			}
+			kc.Logger.Info("Added external vector databases to config", "count", len(externalDBs), "namespace", namespace)
 		}
 	}
 

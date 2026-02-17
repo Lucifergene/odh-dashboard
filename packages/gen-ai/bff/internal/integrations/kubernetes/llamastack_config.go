@@ -61,13 +61,13 @@ type MetadataStore struct {
 }
 
 type RegisteredResources struct {
-	Models     []Model     `json:"models" yaml:"models"`
-	Shields    []Shield    `json:"shields" yaml:"shields"`
-	VectorDBs  []VectorDB  `json:"vector_dbs" yaml:"vector_dbs"`
-	Datasets   []Dataset   `json:"datasets" yaml:"datasets"`
-	ScoringFns []ScoringFn `json:"scoring_fns" yaml:"scoring_fns"`
-	Benchmarks []Benchmark `json:"benchmarks" yaml:"benchmarks"`
-	ToolGroups []ToolGroup `json:"tool_groups" yaml:"tool_groups"`
+	Models       []Model     `json:"models" yaml:"models"`
+	Shields      []Shield    `json:"shields" yaml:"shields"`
+	VectorStores []VectorDB  `json:"vector_stores" yaml:"vector_stores"`
+	Datasets     []Dataset   `json:"datasets" yaml:"datasets"`
+	ScoringFns   []ScoringFn `json:"scoring_fns" yaml:"scoring_fns"`
+	Benchmarks   []Benchmark `json:"benchmarks" yaml:"benchmarks"`
+	ToolGroups   []ToolGroup `json:"tool_groups" yaml:"tool_groups"`
 }
 
 type Storage struct {
@@ -164,12 +164,12 @@ func NewDefaultLlamaStackConfig() *LlamaStackConfig {
 		},
 		RegisteredResources: RegisteredResources{
 			// Ensure these serialize as `[]` (not `null`) when no values exist.
-			Models:     []Model{},
-			Shields:    []Shield{},
-			VectorDBs:  []VectorDB{},
-			Datasets:   []Dataset{},
-			ScoringFns: []ScoringFn{},
-			Benchmarks: []Benchmark{},
+			Models:       []Model{},
+			Shields:      []Shield{},
+			VectorStores: []VectorDB{},
+			Datasets:     []Dataset{},
+			ScoringFns:   []ScoringFn{},
+			Benchmarks:   []Benchmark{},
 			ToolGroups: []ToolGroup{
 				{
 					ToolGroupID: "builtin::rag",
@@ -238,7 +238,10 @@ func (c *LlamaStackConfig) ToYAML() (string, error) {
 	return string(data), nil
 }
 
-// FromYAML parses YAML into the config
+// FromYAML parses YAML into the config.
+// It also handles legacy migration: if the raw YAML contains "vector_dbs" under
+// registered_resources (the old key name), it normalizes them into the VectorDBs field
+// which now serializes as "vector_stores".
 func (c *LlamaStackConfig) FromYAML(data string) error {
 	if data == "" {
 		return fmt.Errorf("YAML data is empty")
@@ -247,6 +250,27 @@ func (c *LlamaStackConfig) FromYAML(data string) error {
 	if err != nil {
 		return fmt.Errorf("failed to parse YAML: failed to unmarshal YAML into config: %w", err)
 	}
+
+	// Legacy migration: check if raw YAML has "vector_dbs" under registered_resources
+	// that didn't get picked up by the new "vector_stores" tag.
+	var raw map[string]interface{}
+	if yamlErr := yaml.Unmarshal([]byte(data), &raw); yamlErr == nil {
+		if rr, ok := raw["registered_resources"].(map[interface{}]interface{}); ok {
+			if legacyDBs, exists := rr["vector_dbs"]; exists && len(c.RegisteredResources.VectorStores) == 0 {
+				// Re-marshal the legacy vector_dbs entries and unmarshal into our struct
+				if legacyList, isList := legacyDBs.([]interface{}); isList && len(legacyList) > 0 {
+					legacyYAML, marshalErr := yaml.Marshal(legacyDBs)
+					if marshalErr == nil {
+						var legacyVectorDBs []VectorDB
+						if unmarshalErr := yaml.Unmarshal(legacyYAML, &legacyVectorDBs); unmarshalErr == nil {
+							c.RegisteredResources.VectorStores = legacyVectorDBs
+						}
+					}
+				}
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -523,13 +547,18 @@ type Shield struct {
 	Metadata   map[string]interface{} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 }
 
-// VectorDB represents a vector database configuration
+// VectorDB represents a vector database configuration in registered_resources.vector_stores.
+// Fields db_id and vector_store_id are both optional: legacy configs use db_id,
+// while external vector stores use vector_store_id with embedding metadata.
 type VectorDB struct {
-	DBID       string                 `json:"db_id" yaml:"db_id"`
-	Name       string                 `json:"name" yaml:"name"`
-	ProviderID string                 `json:"provider_id" yaml:"provider_id"`
-	Config     map[string]interface{} `json:"config" yaml:"config"`
-	Metadata   map[string]interface{} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+	DBID               string                 `json:"db_id,omitempty" yaml:"db_id,omitempty"`
+	VectorStoreID      string                 `json:"vector_store_id,omitempty" yaml:"vector_store_id,omitempty"`
+	Name               string                 `json:"name,omitempty" yaml:"name,omitempty"`
+	ProviderID         string                 `json:"provider_id" yaml:"provider_id"`
+	EmbeddingModel     string                 `json:"embedding_model,omitempty" yaml:"embedding_model,omitempty"`
+	EmbeddingDimension int                    `json:"embedding_dimension,omitempty" yaml:"embedding_dimension,omitempty"`
+	Config             map[string]interface{} `json:"config,omitempty" yaml:"config,omitempty"`
+	Metadata           map[string]interface{} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 }
 
 // Dataset represents a dataset configuration
@@ -572,7 +601,7 @@ func NewShield(shieldID, shieldType, providerID string, config map[string]interf
 	}
 }
 
-// NewVectorDB creates a new VectorDB instance
+// NewVectorDB creates a new VectorDB instance (legacy format with db_id)
 func NewVectorDB(dbID, name, providerID string, config map[string]interface{}) VectorDB {
 	return VectorDB{
 		DBID:       dbID,
@@ -581,6 +610,22 @@ func NewVectorDB(dbID, name, providerID string, config map[string]interface{}) V
 		Config:     config,
 		Metadata:   EmptyConfig(),
 	}
+}
+
+// NewExternalVectorDB creates a VectorDB entry for an external vector store registration.
+// Uses vector_store_id and embedding metadata as expected by Llama Stack VectorStoreInput.
+func NewExternalVectorDB(vectorStoreID, providerID, embeddingModel string, embeddingDimension int) VectorDB {
+	return VectorDB{
+		VectorStoreID:      vectorStoreID,
+		ProviderID:         providerID,
+		EmbeddingModel:     embeddingModel,
+		EmbeddingDimension: embeddingDimension,
+	}
+}
+
+// RegisterVectorDB adds a vector store to the registered resources list.
+func (c *LlamaStackConfig) RegisterVectorDB(vectorDB VectorDB) {
+	c.RegisteredResources.VectorStores = append(c.RegisteredResources.VectorStores, vectorDB)
 }
 
 // NewDataset creates a new Dataset instance

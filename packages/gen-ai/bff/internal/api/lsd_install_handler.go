@@ -84,7 +84,8 @@ func (app *App) LlamaStackDistributionInstallHandler(w http.ResponseWriter, r *h
 
 	// Pass the InstallModel structs directly to the repository
 	// enableGuardrails - if true, safety providers with shields will be configured for all models
-	response, err := app.repositories.LlamaStackDistribution.InstallLlamaStackDistribution(client, ctx, identity, namespace, installRequest.Models, installRequest.EnableGuardrails, maasClient)
+	// includeExternalVectorDBs - if true, external vector databases from ConfigMap will be pre-registered
+	response, err := app.repositories.LlamaStackDistribution.InstallLlamaStackDistribution(client, ctx, identity, namespace, installRequest.Models, installRequest.EnableGuardrails, installRequest.IncludeExternalVectorDBs, maasClient)
 	if err != nil {
 		app.badRequestResponse(w, r, err)
 		return

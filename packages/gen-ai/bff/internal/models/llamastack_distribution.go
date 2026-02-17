@@ -21,8 +21,9 @@ type LlamaStackDistributionResponse struct {
 
 // LlamaStackDistributionInstallRequest represents the request body for installing models
 type LlamaStackDistributionInstallRequest struct {
-	Models           []InstallModel `json:"models"`
-	EnableGuardrails bool           `json:"enable_guardrails,omitempty"` // If true, adds safety configuration with guardrail shields for all selected models
+	Models                   []InstallModel `json:"models"`
+	EnableGuardrails         bool           `json:"enable_guardrails,omitempty"`           // If true, adds safety configuration with guardrail shields for all selected models
+	IncludeExternalVectorDBs bool           `json:"include_external_vector_dbs,omitempty"` // If true, reads external-vector-dbs ConfigMap and pre-registers them in Llama Stack config
 }
 
 // installModelJSON is used for JSON unmarshaling to handle max_tokens as either int or float64

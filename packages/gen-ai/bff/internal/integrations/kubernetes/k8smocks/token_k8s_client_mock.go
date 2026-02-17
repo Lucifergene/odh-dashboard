@@ -373,7 +373,7 @@ func (m *TokenKubernetesClientMock) GetLlamaStackDistributions(ctx context.Conte
 	}, nil
 }
 
-func (m *TokenKubernetesClientMock) InstallLlamaStackDistribution(ctx context.Context, identity *integrations.RequestIdentity, namespace string, installModels []models.InstallModel, enableGuardrails bool, maasClient maas.MaaSClientInterface) (*lsdapi.LlamaStackDistribution, error) {
+func (m *TokenKubernetesClientMock) InstallLlamaStackDistribution(ctx context.Context, identity *integrations.RequestIdentity, namespace string, installModels []models.InstallModel, enableGuardrails bool, includeExternalVectorDBs bool, maasClient maas.MaaSClientInterface) (*lsdapi.LlamaStackDistribution, error) {
 	// Check if LSD already exists in the namespace
 	existingLSDList, err := m.GetLlamaStackDistributions(ctx, identity, namespace)
 	if err != nil {
@@ -877,4 +877,12 @@ func (m *TokenKubernetesClientMock) GetSafetyConfig(ctx context.Context, identit
 			},
 		},
 	}, nil
+}
+
+// UpdateConfigMap mock - delegates to envtest client if available, otherwise returns nil
+func (m *TokenKubernetesClientMock) UpdateConfigMap(ctx context.Context, identity *integrations.RequestIdentity, namespace string, configMap *corev1.ConfigMap) error {
+	if m.Client != nil {
+		return m.Client.Update(ctx, configMap)
+	}
+	return nil
 }

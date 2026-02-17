@@ -55,4 +55,7 @@ const (
 	// LSD Safety endpoint - returns configured guardrail models and shields
 	// Parsed from llama-stack-config ConfigMap
 	LSDSafetyPath = ApiPathPrefix + "/lsd/safety"
+
+	// External Vector Database endpoints
+	ExternalVectorDBsPath = ApiPathPrefix + "/external-vector-dbs"
 )
