@@ -14,7 +14,7 @@ import {
   getMCPServers,
   getMCPServerStatus,
   getMCPServerTools,
-  uploadVisionFile,
+  uploadMediaFile,
 } from '~/app/services/llamaStackService';
 import { URL_PREFIX } from '~/app/utilities';
 import { mockLlamaModels } from '~/__mocks__/mockLlamaStackModels';
@@ -1408,7 +1408,7 @@ describe('llamaStackService', () => {
     });
   });
 
-  describe('uploadVisionFile', () => {
+  describe('uploadMediaFile', () => {
     let mockXhr: {
       open: jest.Mock;
       send: jest.Mock;
@@ -1444,15 +1444,30 @@ describe('llamaStackService', () => {
       jest.restoreAllMocks();
     });
 
-    it('should upload a file and return the file id', async () => {
+    it('should upload a vision file and include type in FormData', async () => {
       const file = new File(['image-data'], 'test.png', { type: 'image/png' });
-      const { promise } = uploadVisionFile('/api/upload', file);
+      const { promise } = uploadMediaFile('/api/upload', file, 'vision');
 
       expect(mockXhr.open).toHaveBeenCalledWith('POST', '/api/upload');
       expect(mockXhr.send).toHaveBeenCalled();
 
       const sentFormData = mockXhr.send.mock.calls[0][0] as FormData;
       expect(sentFormData.get('file')).toBe(file);
+      expect(sentFormData.get('type')).toBe('vision');
+
+      mockXhr.onload!();
+
+      const result = await promise;
+      expect(result).toEqual({ data: { id: 'file-abc123' } });
+    });
+
+    it('should upload an audio file with type=audio', async () => {
+      const file = new File(['audio-data'], 'recording.mp3', { type: 'audio/mpeg' });
+      const { promise } = uploadMediaFile('/api/upload', file, 'audio');
+
+      const sentFormData = mockXhr.send.mock.calls[0][0] as FormData;
+      expect(sentFormData.get('file')).toBe(file);
+      expect(sentFormData.get('type')).toBe('audio');
 
       mockXhr.onload!();
 
@@ -1463,7 +1478,7 @@ describe('llamaStackService', () => {
     it('should call onProgress with percentage', async () => {
       const onProgress = jest.fn();
       const file = new File(['image-data'], 'test.png', { type: 'image/png' });
-      const { promise } = uploadVisionFile('/api/upload', file, onProgress);
+      const { promise } = uploadMediaFile('/api/upload', file, 'vision', onProgress);
 
       mockXhr.upload.onprogress!({ lengthComputable: true, loaded: 50, total: 100 });
       expect(onProgress).toHaveBeenCalledWith(50);
@@ -1478,7 +1493,7 @@ describe('llamaStackService', () => {
     it('should not call onProgress when lengthComputable is false', async () => {
       const onProgress = jest.fn();
       const file = new File(['data'], 'test.png', { type: 'image/png' });
-      const { promise } = uploadVisionFile('/api/upload', file, onProgress);
+      const { promise } = uploadMediaFile('/api/upload', file, 'vision', onProgress);
 
       mockXhr.upload.onprogress!({ lengthComputable: false, loaded: 0, total: 0 });
       expect(onProgress).not.toHaveBeenCalled();
@@ -1492,7 +1507,7 @@ describe('llamaStackService', () => {
       mockXhr.status = 413;
       mockXhr.statusText = 'Payload Too Large';
 
-      const { promise } = uploadVisionFile('/api/upload', file);
+      const { promise } = uploadMediaFile('/api/upload', file, 'vision');
       mockXhr.onload!();
 
       await expect(promise).rejects.toThrow('Upload failed: 413 Payload Too Large');
@@ -1502,7 +1517,7 @@ describe('llamaStackService', () => {
       const file = new File(['data'], 'test.png', { type: 'image/png' });
       mockXhr.responseText = 'not json';
 
-      const { promise } = uploadVisionFile('/api/upload', file);
+      const { promise } = uploadMediaFile('/api/upload', file, 'vision');
       mockXhr.onload!();
 
       await expect(promise).rejects.toThrow('Invalid response from server');
@@ -1512,7 +1527,7 @@ describe('llamaStackService', () => {
       const file = new File(['data'], 'test.png', { type: 'image/png' });
       mockXhr.responseText = JSON.stringify({ result: 'ok' });
 
-      const { promise } = uploadVisionFile('/api/upload', file);
+      const { promise } = uploadMediaFile('/api/upload', file, 'vision');
       mockXhr.onload!();
 
       await expect(promise).rejects.toThrow('Invalid response shape: missing data.id');
@@ -1520,7 +1535,7 @@ describe('llamaStackService', () => {
 
     it('should reject on network error', async () => {
       const file = new File(['data'], 'test.png', { type: 'image/png' });
-      const { promise } = uploadVisionFile('/api/upload', file);
+      const { promise } = uploadMediaFile('/api/upload', file, 'vision');
       mockXhr.onerror!();
 
       await expect(promise).rejects.toThrow('Network error during upload');
@@ -1528,7 +1543,7 @@ describe('llamaStackService', () => {
 
     it('should reject on abort', async () => {
       const file = new File(['data'], 'test.png', { type: 'image/png' });
-      const { promise } = uploadVisionFile('/api/upload', file);
+      const { promise } = uploadMediaFile('/api/upload', file, 'vision');
       mockXhr.onabort!();
 
       await expect(promise).rejects.toThrow('Upload aborted');
@@ -1536,7 +1551,7 @@ describe('llamaStackService', () => {
 
     it('should return an xhr object that can be aborted', () => {
       const file = new File(['data'], 'test.png', { type: 'image/png' });
-      const { xhr } = uploadVisionFile('/api/upload', file);
+      const { xhr } = uploadMediaFile('/api/upload', file, 'vision');
 
       xhr.abort();
       expect(mockXhr.abort).toHaveBeenCalled();
