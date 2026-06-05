@@ -211,6 +211,8 @@ export const useChatbotConfigStore = create<ChatbotConfigStore>()(
           selectedSubscription: sourceConfig.selectedSubscription,
           activePrompt: deepCopyPrompt(sourceConfig.activePrompt),
           dirtyPrompt: deepCopyPrompt(sourceConfig.dirtyPrompt),
+          selectedAsrModel: sourceConfig.selectedAsrModel,
+          isAsrModelEnabled: sourceConfig.isAsrModelEnabled,
         };
 
         set(
@@ -295,6 +297,32 @@ export const useChatbotConfigStore = create<ChatbotConfigStore>()(
           },
           false,
           'updateSelectedSubscription',
+        );
+      },
+
+      updateSelectedAsrModel: (id: string, value: string) => {
+        set(
+          (state) => {
+            const config = state.configurations[id];
+            if (config) {
+              config.selectedAsrModel = value;
+            }
+          },
+          false,
+          'updateSelectedAsrModel',
+        );
+      },
+
+      updateAsrModelEnabled: (id: string, value: boolean) => {
+        set(
+          (state) => {
+            const config = state.configurations[id];
+            if (config) {
+              config.isAsrModelEnabled = value;
+            }
+          },
+          false,
+          'updateAsrModelEnabled',
         );
       },
 
