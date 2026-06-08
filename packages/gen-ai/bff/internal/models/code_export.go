@@ -65,6 +65,7 @@ type CodeExportRequest struct {
 	Files           []FileUpload               `json:"files,omitempty"`
 	Prompt          *PromptConfig              `json:"prompt,omitempty"`
 	GuardrailConfig *CodeExportGuardrailConfig `json:"guardrail_config,omitempty"`
+	ASRModel        string                     `json:"asr_model,omitempty"`
 }
 
 type CodeExportResponse struct {

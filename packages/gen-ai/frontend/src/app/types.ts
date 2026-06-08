@@ -322,6 +322,7 @@ export type CodeExportRequest = {
     version: number;
   };
   guardrail_config?: CodeExportGuardrailConfig;
+  asr_model?: string;
 };
 
 export type CodeExportData = {
