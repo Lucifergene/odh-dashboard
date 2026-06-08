@@ -462,6 +462,12 @@ const ChatbotPlayground: React.FC<ChatbotPlaygroundProps> = ({
             uploading: false,
             fileId: response.data.id,
           }));
+          const { configIds: allConfigIds, configurations } = useChatbotConfigStore.getState();
+          allConfigIds.forEach((cId) => {
+            if (configurations[cId]) {
+              useChatbotConfigStore.getState().updateHasVisionImage(cId, true);
+            }
+          });
         })
         .catch((error) => {
           if (uploadGenRef.current !== gen) {
@@ -537,7 +543,15 @@ const ChatbotPlayground: React.FC<ChatbotPlaygroundProps> = ({
       previewUrl: null,
       fileName: null,
     });
-  }, [imageUploadState.uploading, imageUploadState.previewUrl]);
+    if (!hasImageInConversation) {
+      const { configIds: ids, configurations: configs } = useChatbotConfigStore.getState();
+      ids.forEach((cId) => {
+        if (configs[cId]) {
+          useChatbotConfigStore.getState().updateHasVisionImage(cId, false);
+        }
+      });
+    }
+  }, [imageUploadState.uploading, imageUploadState.previewUrl, hasImageInConversation]);
 
   // Audio upload handler
   const handleAudioUpload = React.useCallback(
@@ -687,6 +701,12 @@ const ChatbotPlayground: React.FC<ChatbotPlaygroundProps> = ({
         handleRemoveImage();
         setPendingDocChips([]);
         audioTranscription.abort();
+        const { configIds: allCIds, configurations: allConfigs } = useChatbotConfigStore.getState();
+        allCIds.forEach((cId) => {
+          if (allConfigs[cId]) {
+            useChatbotConfigStore.getState().updateHasVisionImage(cId, false);
+          }
+        });
         audioUploadLatchRef.current = false;
         setHasAudioInCurrentMessage(false);
         setMessageBarValue('');
@@ -804,6 +824,12 @@ const ChatbotPlayground: React.FC<ChatbotPlaygroundProps> = ({
           setPendingDocChips([]);
           audioTranscription.abort();
           setHasAudioInCurrentMessage(false);
+          const { configIds: cIds, configurations: cfgs } = useChatbotConfigStore.getState();
+          cIds.forEach((cId) => {
+            if (cfgs[cId]) {
+              useChatbotConfigStore.getState().updateHasVisionImage(cId, false);
+            }
+          });
           setMessageBarValue('');
           if (isCompareMode) {
             fireMiscTrackingEvent('Playground Compare Chat Cleared', { success: true });

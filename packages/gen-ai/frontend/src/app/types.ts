@@ -323,6 +323,7 @@ export type CodeExportRequest = {
   };
   guardrail_config?: CodeExportGuardrailConfig;
   asr_model?: string;
+  vision_image?: boolean;
 };
 
 export type CodeExportData = {

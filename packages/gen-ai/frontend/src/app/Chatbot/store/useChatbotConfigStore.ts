@@ -213,6 +213,7 @@ export const useChatbotConfigStore = create<ChatbotConfigStore>()(
           dirtyPrompt: deepCopyPrompt(sourceConfig.dirtyPrompt),
           selectedAsrModel: sourceConfig.selectedAsrModel,
           isAsrModelEnabled: sourceConfig.isAsrModelEnabled,
+          hasVisionImage: sourceConfig.hasVisionImage,
         };
 
         set(
@@ -323,6 +324,19 @@ export const useChatbotConfigStore = create<ChatbotConfigStore>()(
           },
           false,
           'updateAsrModelEnabled',
+        );
+      },
+
+      updateHasVisionImage: (id: string, value: boolean) => {
+        set(
+          (state) => {
+            const config = state.configurations[id];
+            if (config) {
+              config.hasVisionImage = value;
+            }
+          },
+          false,
+          'updateHasVisionImage',
         );
       },
 
