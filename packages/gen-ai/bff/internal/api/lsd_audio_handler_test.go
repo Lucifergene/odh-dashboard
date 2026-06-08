@@ -158,7 +158,7 @@ func asrModel(namespace string) models.AAModel {
 		APIProtocol:     "REST",
 		Description:     "Whisper Large V3 Turbo",
 		Usecase:         "Audio transcription",
-		Endpoints:       []string{fmt.Sprintf("internal: http://whisper-asr.%s.svc.cluster.local:8080", namespace)},
+		Endpoints:       []string{fmt.Sprintf("internal: http://whisper-asr.%s.svc.cluster.local:80", namespace)},
 		Status:          models.ModelStatusRunning,
 		DisplayName:     "Whisper ASR",
 		ModelSourceType: models.ModelSourceTypeNamespace,
@@ -205,6 +205,23 @@ func mockLSWithAudio(data []byte, contentType string) *mockLSClientForASR {
 
 func mockLSWithError(err error) *mockLSClientForASR {
 	return &mockLSClientForASR{fileErr: err}
+}
+
+// frontendError is the test representation of the FrontendErrorResponse JSON shape
+type frontendError struct {
+	Error struct {
+		Component string `json:"component"`
+		Code      string `json:"code"`
+		Message   string `json:"message"`
+		Retriable bool   `json:"retriable"`
+	} `json:"error"`
+}
+
+func parseFrontendError(t *testing.T, body []byte) frontendError {
+	t.Helper()
+	var fe frontendError
+	require.NoError(t, json.Unmarshal(body, &fe))
+	return fe
 }
 
 // --- Validation Tests ---
@@ -269,7 +286,11 @@ func TestAudioTranscription_ModelNotFound(t *testing.T) {
 	app.LlamaStackAudioTranscriptionHandler(rr, req, nil)
 
 	assert.Equal(t, http.StatusNotFound, rr.Code)
-	assert.Contains(t, rr.Body.String(), "not found")
+	fe := parseFrontendError(t, rr.Body.Bytes())
+	assert.Equal(t, "asr", fe.Error.Component)
+	assert.Equal(t, constants.ASRCodeModelNotFound, fe.Error.Code)
+	assert.Contains(t, fe.Error.Message, "not found")
+	assert.False(t, fe.Error.Retriable)
 }
 
 func TestAudioTranscription_ModelLacksModalityLabel(t *testing.T) {
@@ -283,7 +304,11 @@ func TestAudioTranscription_ModelLacksModalityLabel(t *testing.T) {
 	app.LlamaStackAudioTranscriptionHandler(rr, req, nil)
 
 	assert.Equal(t, http.StatusNotFound, rr.Code)
-	assert.Contains(t, rr.Body.String(), "not an ASR model")
+	fe := parseFrontendError(t, rr.Body.Bytes())
+	assert.Equal(t, "asr", fe.Error.Component)
+	assert.Equal(t, constants.ASRCodeModelInvalid, fe.Error.Code)
+	assert.Contains(t, fe.Error.Message, "not an ASR model")
+	assert.False(t, fe.Error.Retriable)
 }
 
 func TestAudioTranscription_SSRFPreventionCustomEndpoint(t *testing.T) {
@@ -297,7 +322,11 @@ func TestAudioTranscription_SSRFPreventionCustomEndpoint(t *testing.T) {
 	app.LlamaStackAudioTranscriptionHandler(rr, req, nil)
 
 	assert.Equal(t, http.StatusBadRequest, rr.Code)
-	assert.Contains(t, rr.Body.String(), "namespace-deployed model")
+	fe := parseFrontendError(t, rr.Body.Bytes())
+	assert.Equal(t, "asr", fe.Error.Component)
+	assert.Equal(t, constants.ASRCodeModelInvalid, fe.Error.Code)
+	assert.Contains(t, fe.Error.Message, "namespace-deployed model")
+	assert.False(t, fe.Error.Retriable)
 }
 
 func TestAudioTranscription_ModelNotRunning(t *testing.T) {
@@ -311,7 +340,11 @@ func TestAudioTranscription_ModelNotRunning(t *testing.T) {
 	app.LlamaStackAudioTranscriptionHandler(rr, req, nil)
 
 	assert.Equal(t, http.StatusBadRequest, rr.Code)
-	assert.Contains(t, rr.Body.String(), "not running")
+	fe := parseFrontendError(t, rr.Body.Bytes())
+	assert.Equal(t, "asr", fe.Error.Component)
+	assert.Equal(t, constants.ASRCodeModelNotRunning, fe.Error.Code)
+	assert.Contains(t, fe.Error.Message, "not running")
+	assert.True(t, fe.Error.Retriable)
 }
 
 func TestAudioTranscription_ModelNoInternalEndpoint(t *testing.T) {
@@ -325,7 +358,11 @@ func TestAudioTranscription_ModelNoInternalEndpoint(t *testing.T) {
 	app.LlamaStackAudioTranscriptionHandler(rr, req, nil)
 
 	assert.Equal(t, http.StatusBadRequest, rr.Code)
-	assert.Contains(t, rr.Body.String(), "no internal endpoint")
+	fe := parseFrontendError(t, rr.Body.Bytes())
+	assert.Equal(t, "asr", fe.Error.Component)
+	assert.Equal(t, constants.ASRCodeModelNoEndpoint, fe.Error.Code)
+	assert.Contains(t, fe.Error.Message, "no internal endpoint")
+	assert.False(t, fe.Error.Retriable)
 }
 
 // --- GetFileContent Error Tests ---
@@ -340,7 +377,11 @@ func TestAudioTranscription_GetFileContentError(t *testing.T) {
 	app.LlamaStackAudioTranscriptionHandler(rr, req, nil)
 
 	assert.Equal(t, http.StatusBadGateway, rr.Code)
-	assert.Contains(t, rr.Body.String(), "file not found")
+	fe := parseFrontendError(t, rr.Body.Bytes())
+	assert.Equal(t, "asr", fe.Error.Component)
+	assert.Equal(t, constants.ASRCodeFileRetrieval, fe.Error.Code)
+	assert.Contains(t, fe.Error.Message, "file not found")
+	assert.True(t, fe.Error.Retriable)
 }
 
 func TestAudioTranscription_GetFileContentServerError(t *testing.T) {
@@ -353,7 +394,11 @@ func TestAudioTranscription_GetFileContentServerError(t *testing.T) {
 	app.LlamaStackAudioTranscriptionHandler(rr, req, nil)
 
 	assert.Equal(t, http.StatusBadGateway, rr.Code)
-	assert.Contains(t, rr.Body.String(), "500")
+	fe := parseFrontendError(t, rr.Body.Bytes())
+	assert.Equal(t, "asr", fe.Error.Component)
+	assert.Equal(t, constants.ASRCodeFileRetrieval, fe.Error.Code)
+	assert.Contains(t, fe.Error.Message, "500")
+	assert.True(t, fe.Error.Retriable)
 }
 
 func TestAudioTranscription_MissingLSClient(t *testing.T) {
@@ -457,7 +502,11 @@ func TestAudioTranscription_ASREndpointAuthFailure(t *testing.T) {
 	app.LlamaStackAudioTranscriptionHandler(rr, req, nil)
 
 	assert.Equal(t, http.StatusUnauthorized, rr.Code)
-	assert.Contains(t, rr.Body.String(), "authentication failed")
+	fe := parseFrontendError(t, rr.Body.Bytes())
+	assert.Equal(t, "asr", fe.Error.Component)
+	assert.Equal(t, constants.ASRCodeAuthFailed, fe.Error.Code)
+	assert.Contains(t, fe.Error.Message, "authentication failed")
+	assert.False(t, fe.Error.Retriable)
 }
 
 func TestAudioTranscription_ASREndpointServerError(t *testing.T) {
@@ -476,7 +525,11 @@ func TestAudioTranscription_ASREndpointServerError(t *testing.T) {
 	app.LlamaStackAudioTranscriptionHandler(rr, req, nil)
 
 	assert.Equal(t, http.StatusBadGateway, rr.Code)
-	assert.Contains(t, rr.Body.String(), "ASR endpoint returned status 500")
+	fe := parseFrontendError(t, rr.Body.Bytes())
+	assert.Equal(t, "asr", fe.Error.Component)
+	assert.Equal(t, constants.ASRCodeServiceError, fe.Error.Code)
+	assert.Contains(t, fe.Error.Message, "ASR endpoint returned status 500")
+	assert.True(t, fe.Error.Retriable)
 }
 
 func TestAudioTranscription_ASREmptyTranscription(t *testing.T) {
@@ -497,7 +550,11 @@ func TestAudioTranscription_ASREmptyTranscription(t *testing.T) {
 	app.LlamaStackAudioTranscriptionHandler(rr, req, nil)
 
 	assert.Equal(t, http.StatusUnprocessableEntity, rr.Code)
-	assert.Contains(t, rr.Body.String(), "No speech detected")
+	fe := parseFrontendError(t, rr.Body.Bytes())
+	assert.Equal(t, "asr", fe.Error.Component)
+	assert.Equal(t, constants.ASRCodeNoSpeech, fe.Error.Code)
+	assert.Contains(t, fe.Error.Message, "No speech detected")
+	assert.False(t, fe.Error.Retriable)
 }
 
 func TestAudioTranscription_ASRInvalidJSON(t *testing.T) {
@@ -518,7 +575,11 @@ func TestAudioTranscription_ASRInvalidJSON(t *testing.T) {
 	app.LlamaStackAudioTranscriptionHandler(rr, req, nil)
 
 	assert.Equal(t, http.StatusBadGateway, rr.Code)
-	assert.Contains(t, rr.Body.String(), "invalid JSON")
+	fe := parseFrontendError(t, rr.Body.Bytes())
+	assert.Equal(t, "asr", fe.Error.Component)
+	assert.Equal(t, constants.ASRCodeInvalidResponse, fe.Error.Code)
+	assert.Contains(t, fe.Error.Message, "invalid JSON")
+	assert.True(t, fe.Error.Retriable)
 }
 
 func TestAudioTranscription_ASRTimeout(t *testing.T) {
@@ -542,6 +603,98 @@ func TestAudioTranscription_ASRTimeout(t *testing.T) {
 	app.LlamaStackAudioTranscriptionHandler(rr, req, nil)
 
 	assert.Equal(t, http.StatusGatewayTimeout, rr.Code)
+	fe := parseFrontendError(t, rr.Body.Bytes())
+	assert.Equal(t, "asr", fe.Error.Component)
+	assert.Equal(t, constants.ASRCodeTimeout, fe.Error.Code)
+	assert.True(t, fe.Error.Retriable)
+}
+
+// --- ASR_MODEL_URL Override Tests ---
+
+func TestAudioTranscription_AsrModelURLOverride(t *testing.T) {
+	// Start a mock ASR server that records incoming requests
+	asrServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.True(t, strings.HasPrefix(r.URL.Path, "/v1/audio/transcriptions"))
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]string{"text": "override transcription"})
+	}))
+	defer asrServer.Close()
+
+	// Model has NO internal endpoint — without override this would fail
+	model := asrModel("test-ns")
+	model.Endpoints = []string{"external: https://external.example.com"}
+	app := newTestAppForASR(t, []models.AAModel{model})
+	app.config.AsrModelURL = asrServer.URL
+
+	lsClient := mockLSWithAudio(wavBytes(), "audio/wav")
+	req := buildAudioRequest(t, AudioTranscriptionRequest{FileID: "file-abc123", ASRModelID: "whisper-asr"}, lsClient)
+	rr := httptest.NewRecorder()
+	app.LlamaStackAudioTranscriptionHandler(rr, req, nil)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+
+	var resp AudioTranscriptionResponse
+	err := json.Unmarshal(rr.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Equal(t, "override transcription", resp.Text)
+}
+
+func TestAudioTranscription_AsrModelURLOverrideIgnoresInternalEndpoint(t *testing.T) {
+	// The override URL should be used instead of the model's internal endpoint
+	overrideServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]string{"text": "from override server"})
+	}))
+	defer overrideServer.Close()
+
+	// Model has a valid internal endpoint, but override should take precedence
+	model := asrModel("test-ns")
+	model.Endpoints = []string{"internal: http://should-not-be-used.svc.cluster.local:80"}
+	app := newTestAppForASR(t, []models.AAModel{model})
+	app.config.AsrModelURL = overrideServer.URL
+
+	lsClient := mockLSWithAudio(wavBytes(), "audio/wav")
+	req := buildAudioRequest(t, AudioTranscriptionRequest{FileID: "file-abc123", ASRModelID: "whisper-asr"}, lsClient)
+	rr := httptest.NewRecorder()
+	app.LlamaStackAudioTranscriptionHandler(rr, req, nil)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+
+	var resp AudioTranscriptionResponse
+	err := json.Unmarshal(rr.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Equal(t, "from override server", resp.Text)
+}
+
+func TestAudioTranscription_AsrModelURLEmptyUsesInternalEndpoint(t *testing.T) {
+	// When AsrModelURL is empty, the normal internal endpoint should be used
+	internalServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]string{"text": "from internal endpoint"})
+	}))
+	defer internalServer.Close()
+
+	model := asrModel("test-ns")
+	model.Endpoints = []string{"internal: " + internalServer.URL}
+	app := newTestAppForASR(t, []models.AAModel{model})
+	// Explicitly leave AsrModelURL empty (default)
+
+	lsClient := mockLSWithAudio(wavBytes(), "audio/wav")
+	req := buildAudioRequest(t, AudioTranscriptionRequest{FileID: "file-abc123", ASRModelID: "whisper-asr"}, lsClient)
+	rr := httptest.NewRecorder()
+	app.LlamaStackAudioTranscriptionHandler(rr, req, nil)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+
+	var resp AudioTranscriptionResponse
+	err := json.Unmarshal(rr.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Equal(t, "from internal endpoint", resp.Text)
 }
 
 // --- Unit Tests for Helper Functions ---

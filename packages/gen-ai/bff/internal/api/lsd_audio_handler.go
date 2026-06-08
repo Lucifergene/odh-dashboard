@@ -8,7 +8,6 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -104,7 +103,19 @@ func (app *App) LlamaStackAudioTranscriptionHandler(w http.ResponseWriter, r *ht
 	// Validate audio format via magic bytes
 	validatedReader, err := validateAudioMagicBytes(limitedBody)
 	if err != nil {
-		app.badRequestResponse(w, r, err)
+		frontendErr := &integrations.FrontendErrorResponse{
+			StatusCode: http.StatusBadRequest,
+			Error: &integrations.ErrorDetail{
+				Component: llamastack.ComponentASR,
+				Code:      constants.ASRCodeInvalidFormat,
+				Message:   err.Error(),
+				Retriable: false,
+			},
+		}
+		if writeErr := app.WriteJSON(w, frontendErr.StatusCode, frontendErr, nil); writeErr != nil {
+			app.LogError(r, writeErr)
+			w.WriteHeader(frontendErr.StatusCode)
+		}
 		return
 	}
 
@@ -144,26 +155,30 @@ func (app *App) resolveASRModel(ctx context.Context, identity *integrations.Requ
 	}
 
 	if found == nil {
-		return "", "", &asrResolutionError{code: http.StatusNotFound, msg: fmt.Sprintf("ASR model %q not found in namespace %q", modelID, namespace)}
+		return "", "", &asrResolutionError{code: http.StatusNotFound, errorCode: constants.ASRCodeModelNotFound, msg: fmt.Sprintf("ASR model %q not found in namespace %q", modelID, namespace)}
 	}
 
 	// SSRF prevention: only namespace-deployed models (ISVC/LLMISVC) are allowed
 	if found.ModelSourceType != models.ModelSourceTypeNamespace {
-		return "", "", &asrResolutionError{code: http.StatusBadRequest, msg: fmt.Sprintf("ASR model %q must be a namespace-deployed model (InferenceService), got %q", modelID, found.ModelSourceType)}
+		return "", "", &asrResolutionError{code: http.StatusBadRequest, errorCode: constants.ASRCodeModelInvalid, msg: fmt.Sprintf("ASR model %q must be a namespace-deployed model (InferenceService), got %q", modelID, found.ModelSourceType)}
 	}
 
 	if found.Modality != constants.ModalityAudioTranscription {
-		return "", "", &asrResolutionError{code: http.StatusNotFound, msg: fmt.Sprintf("model %q is not an ASR model (missing label %s=%s)", modelID, constants.ModalityLabelKey, constants.ModalityAudioTranscription)}
+		return "", "", &asrResolutionError{code: http.StatusNotFound, errorCode: constants.ASRCodeModelInvalid, msg: fmt.Sprintf("model %q is not an ASR model (missing label %s=%s)", modelID, constants.ModalityLabelKey, constants.ModalityAudioTranscription)}
 	}
 
 	if found.Status != models.ModelStatusRunning {
-		return "", "", &asrResolutionError{code: http.StatusBadRequest, msg: fmt.Sprintf("ASR model %q is not running (status: %s)", modelID, found.Status)}
+		return "", "", &asrResolutionError{code: http.StatusBadRequest, errorCode: constants.ASRCodeModelNotRunning, retriable: true, msg: fmt.Sprintf("ASR model %q is not running (status: %s)", modelID, found.Status)}
 	}
 
-	// Extract internal endpoint URL
-	endpoint = extractInternalEndpoint(found.Endpoints)
-	if endpoint == "" {
-		return "", "", &asrResolutionError{code: http.StatusBadRequest, msg: fmt.Sprintf("ASR model %q has no internal endpoint available", modelID)}
+	// Extract internal endpoint URL (or use developer override)
+	if app.config.AsrModelURL != "" {
+		endpoint = app.config.AsrModelURL
+	} else {
+		endpoint = extractInternalEndpoint(found.Endpoints)
+		if endpoint == "" {
+			return "", "", &asrResolutionError{code: http.StatusBadRequest, errorCode: constants.ASRCodeModelNoEndpoint, msg: fmt.Sprintf("ASR model %q has no internal endpoint available", modelID)}
+		}
 	}
 
 	return endpoint, found.ModelID, nil
@@ -222,7 +237,7 @@ func (app *App) callASREndpoint(ctx context.Context, asrEndpoint, modelName stri
 	asrReq, err := http.NewRequestWithContext(asrCtx, http.MethodPost, asrURL, pr)
 	if err != nil {
 		pr.Close()
-		return "", &asrCallError{code: http.StatusBadGateway, msg: fmt.Sprintf("failed to create ASR request: %v", err)}
+		return "", &asrCallError{code: http.StatusBadGateway, errorCode: constants.ASRCodeUnreachable, retriable: true, msg: fmt.Sprintf("failed to create ASR request: %v", err)}
 	}
 	asrReq.Header.Set("Content-Type", mpWriter.FormDataContentType())
 	if authToken != "" {
@@ -233,35 +248,35 @@ func (app *App) callASREndpoint(ctx context.Context, asrEndpoint, modelName stri
 	resp, err := asrClient.Do(asrReq)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return "", &asrCallError{code: http.StatusGatewayTimeout, msg: "ASR transcription timed out"}
+			return "", &asrCallError{code: http.StatusGatewayTimeout, errorCode: constants.ASRCodeTimeout, retriable: true, msg: "ASR transcription timed out"}
 		}
-		return "", &asrCallError{code: http.StatusBadGateway, msg: fmt.Sprintf("ASR endpoint unreachable: %v", err)}
+		return "", &asrCallError{code: http.StatusBadGateway, errorCode: constants.ASRCodeUnreachable, retriable: true, msg: fmt.Sprintf("ASR endpoint unreachable: %v", err)}
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-		return "", &asrCallError{code: resp.StatusCode, msg: "ASR model authentication failed — verify AI Asset endpoint access"}
+		return "", &asrCallError{code: resp.StatusCode, errorCode: constants.ASRCodeAuthFailed, msg: "ASR model authentication failed — verify AI Asset endpoint access"}
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return "", &asrCallError{code: http.StatusBadGateway, msg: fmt.Sprintf("ASR endpoint returned status %d", resp.StatusCode)}
+		return "", &asrCallError{code: http.StatusBadGateway, errorCode: constants.ASRCodeServiceError, retriable: true, msg: fmt.Sprintf("ASR endpoint returned status %d", resp.StatusCode)}
 	}
 
 	// Parse response
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // 1MB limit on response
 	if err != nil {
-		return "", &asrCallError{code: http.StatusBadGateway, msg: "failed to read ASR response"}
+		return "", &asrCallError{code: http.StatusBadGateway, errorCode: constants.ASRCodeInvalidResponse, retriable: true, msg: "failed to read ASR response"}
 	}
 
 	var asrResp struct {
 		Text string `json:"text"`
 	}
 	if err := json.Unmarshal(body, &asrResp); err != nil {
-		return "", &asrCallError{code: http.StatusBadGateway, msg: "ASR endpoint returned invalid JSON response"}
+		return "", &asrCallError{code: http.StatusBadGateway, errorCode: constants.ASRCodeInvalidResponse, retriable: true, msg: "ASR endpoint returned invalid JSON response"}
 	}
 
 	if strings.TrimSpace(asrResp.Text) == "" {
-		return "", &asrCallError{code: http.StatusUnprocessableEntity, msg: "No speech detected — try a clearer recording"}
+		return "", &asrCallError{code: http.StatusUnprocessableEntity, errorCode: constants.ASRCodeNoSpeech, msg: "No speech detected — try a clearer recording"}
 	}
 
 	return asrResp.Text, nil
@@ -351,15 +366,19 @@ func extractInternalEndpoint(endpoints []string) string {
 // Error types for structured error handling
 
 type asrResolutionError struct {
-	code int
-	msg  string
+	code      int
+	msg       string
+	errorCode string
+	retriable bool
 }
 
 func (e *asrResolutionError) Error() string { return e.msg }
 
 type asrCallError struct {
-	code int
-	msg  string
+	code      int
+	msg       string
+	errorCode string
+	retriable bool
 }
 
 func (e *asrCallError) Error() string { return e.msg }
@@ -367,41 +386,56 @@ func (e *asrCallError) Error() string { return e.msg }
 func (app *App) handleASRResolutionError(w http.ResponseWriter, r *http.Request, err error) {
 	var resErr *asrResolutionError
 	if errors.As(err, &resErr) {
-		httpError := &integrations.HTTPError{
+		frontendErr := &integrations.FrontendErrorResponse{
 			StatusCode: resErr.code,
-			ErrorResponse: integrations.ErrorResponse{
-				Code:    strconv.Itoa(resErr.code),
-				Message: resErr.msg,
+			Error: &integrations.ErrorDetail{
+				Component: llamastack.ComponentASR,
+				Code:      resErr.errorCode,
+				Message:   resErr.msg,
+				Retriable: resErr.retriable,
 			},
 		}
-		app.errorResponse(w, r, httpError)
+		if writeErr := app.WriteJSON(w, frontendErr.StatusCode, frontendErr, nil); writeErr != nil {
+			app.LogError(r, writeErr)
+			w.WriteHeader(frontendErr.StatusCode)
+		}
 		return
 	}
 	app.serverErrorResponse(w, r, err)
 }
 
 func (app *App) handleFileRetrievalError(w http.ResponseWriter, r *http.Request, err error) {
-	httpError := &integrations.HTTPError{
+	frontendErr := &integrations.FrontendErrorResponse{
 		StatusCode: http.StatusBadGateway,
-		ErrorResponse: integrations.ErrorResponse{
-			Code:    strconv.Itoa(http.StatusBadGateway),
-			Message: err.Error(),
+		Error: &integrations.ErrorDetail{
+			Component: llamastack.ComponentASR,
+			Code:      constants.ASRCodeFileRetrieval,
+			Message:   err.Error(),
+			Retriable: true,
 		},
 	}
-	app.errorResponse(w, r, httpError)
+	if writeErr := app.WriteJSON(w, frontendErr.StatusCode, frontendErr, nil); writeErr != nil {
+		app.LogError(r, writeErr)
+		w.WriteHeader(frontendErr.StatusCode)
+	}
 }
 
 func (app *App) handleASRCallError(w http.ResponseWriter, r *http.Request, err error) {
 	var callErr *asrCallError
 	if errors.As(err, &callErr) {
-		httpError := &integrations.HTTPError{
+		frontendErr := &integrations.FrontendErrorResponse{
 			StatusCode: callErr.code,
-			ErrorResponse: integrations.ErrorResponse{
-				Code:    strconv.Itoa(callErr.code),
-				Message: callErr.msg,
+			Error: &integrations.ErrorDetail{
+				Component: llamastack.ComponentASR,
+				Code:      callErr.errorCode,
+				Message:   callErr.msg,
+				Retriable: callErr.retriable,
 			},
 		}
-		app.errorResponse(w, r, httpError)
+		if writeErr := app.WriteJSON(w, frontendErr.StatusCode, frontendErr, nil); writeErr != nil {
+			app.LogError(r, writeErr)
+			w.WriteHeader(frontendErr.StatusCode)
+		}
 		return
 	}
 	app.serverErrorResponse(w, r, err)

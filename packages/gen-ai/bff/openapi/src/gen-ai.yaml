@@ -1625,49 +1625,50 @@ paths:
         '400':
           description: >-
             Invalid request: missing fields, unsupported audio format,
-            model is not namespace-deployed, or model is not running
+            model is not namespace-deployed, or model is not running.
+            Error codes: invalid_format, model_invalid, model_not_running.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/FrontendErrorResponse'
         '401':
-          description: ASR model authentication failed
+          description: 'ASR model authentication failed (code: auth_failed)'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/FrontendErrorResponse'
         '403':
-          description: ASR model access forbidden
+          description: 'ASR model access forbidden (code: auth_failed)'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/FrontendErrorResponse'
         '404':
-          description: ASR model not found or lacks modality label
+          description: 'ASR model not found or lacks modality label (code: model_not_found)'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/FrontendErrorResponse'
         '422':
-          description: No speech detected in the audio file
+          description: 'No speech detected in the audio file (code: no_speech)'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/FrontendErrorResponse'
         '502':
           description: >-
-            Bad gateway: OGX file retrieval failed, ASR returned
-            invalid response format
+            Bad gateway - OGX file retrieval failed or ASR returned
+            invalid response format (codes file_retrieval_failed, invalid_response)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/FrontendErrorResponse'
         '504':
-          description: ASR endpoint unreachable or transcription timed out
+          description: 'ASR endpoint unreachable or transcription timed out (codes: unreachable, timeout)'
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/FrontendErrorResponse'
 
   /gen-ai/api/v1/lsd/files/delete:
     summary: Delete file
@@ -2193,6 +2194,38 @@ components:
               type: string
               description: Human-readable error message
               example: 'request body exceeds the 20MB limit'
+
+    FrontendErrorResponse:
+      type: object
+      description: >-
+        Structured error response with component attribution and retriability.
+        Used by endpoints that provide fine-grained error classification for
+        frontend microcopy rendering.
+      properties:
+        error:
+          type: object
+          required:
+            - component
+            - code
+            - message
+            - retriable
+          properties:
+            component:
+              type: string
+              description: System component that generated the error
+              example: 'asr'
+            code:
+              type: string
+              description: Machine-readable error code within the component
+              example: 'model_not_found'
+            message:
+              type: string
+              description: Human-readable error description
+              example: 'ASR model "whisper" not found in namespace'
+            retriable:
+              type: boolean
+              description: Whether the client should offer a retry action
+              example: false
 
     AudioTranscriptionRequest:
       type: object
